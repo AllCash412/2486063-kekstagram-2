@@ -1,5 +1,7 @@
 import {sendData} from './api.js';
 import {showSuccess, showError} from './message.js';
+import {initEffects, resetEffects} from './effects.js';
+import {initScale} from './scale.js';
 
 const form = document.querySelector('.img-upload__form');
 const uploadInput = form.querySelector('.img-upload__input');
@@ -13,6 +15,8 @@ const previewImage = form.querySelector('.img-upload__preview img');
 const HASHTAG_REGEX = /^#[a-zа-яё0-9]{1,19}$/i;
 const MAX_HASHTAGS = 5;
 const MAX_COMMENT_LENGTH = 140;
+const FILE_TYPES = ['jpg', 'jpeg', 'png'];
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
 const pristine = new Pristine(form, {
   classTo: 'img-upload__field-wrapper',
@@ -63,9 +67,15 @@ function onEscKeydown(evt) {
 function hideForm() {
   form.reset();
   pristine.reset();
+  resetEffects();
   overlay.classList.add('hidden');
   document.body.classList.remove('modal-open');
   document.removeEventListener('keydown', onEscKeydown);
+  // Очищаем URL объект
+  if (previewImage.dataset.currentUrl) {
+    URL.revokeObjectURL(previewImage.dataset.currentUrl);
+    previewImage.dataset.currentUrl = '';
+  }
   previewImage.src = '';
 }
 
@@ -80,13 +90,46 @@ const toggleSubmitButton = (disabled) => {
   submitButton.textContent = disabled ? 'Публикация...' : 'Опубликовать';
 };
 
+const onImageLoad = () => {
+  showForm();
+};
+
+const onImageError = () => {
+  hideForm();
+  showError('Не удалось загрузить изображение');
+  uploadInput.value = '';
+};
+
 const initForm = () => {
+  initEffects();
+  initScale();
   uploadInput.addEventListener('change', () => {
     const file = uploadInput.files[0];
     if (file) {
-      previewImage.src = URL.createObjectURL(file);
+      if (file.size > MAX_FILE_SIZE) {
+        showError('Размер файла не должен превышать 5MB');
+        uploadInput.value = '';
+        return;
+      }
+
+      const fileName = file.name.toLowerCase();
+      const matches = FILE_TYPES.some((it) => fileName.endsWith(it));
+
+      if (!matches) {
+        showError('Загрузите изображение в формате jpg, jpeg или png');
+        uploadInput.value = '';
+        return;
+      }
+
+      const imageUrl = URL.createObjectURL(file);
+      previewImage.src = imageUrl;
+      // Сохраняем URL для последующей очистки
+      previewImage.dataset.currentUrl = imageUrl;
+
+      // Добавляем обработчики загрузки изображения
+      previewImage.addEventListener('load', onImageLoad, { once: true });
+      previewImage.addEventListener('error', onImageError, { once: true });
     }
-    showForm();
   });
 
   cancelButton.addEventListener('click', () => {
